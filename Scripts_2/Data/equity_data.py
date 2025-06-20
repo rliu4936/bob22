@@ -8,8 +8,6 @@ from Data import dgp_config as dcf
 
 
 def get_processed_US_data_by_year(year, df):
-    # df = processed_US_data()
-
     df = df[
         df.index.get_level_values("Date").year.isin([year, year - 1, year - 2])
     ].copy()
@@ -17,7 +15,6 @@ def get_processed_US_data_by_year(year, df):
 
 
 def get_spy_freq_rets(freq):
-    # print(freq)
     assert freq in ["week", "month", "quarter"]
     spy = pd.read_csv(
         os.path.join(dcf.CACHE_DIR, f"spy_{freq}_ret.csv"),
@@ -29,7 +26,6 @@ def get_spy_freq_rets(freq):
 
 
 def get_period_end_dates(period):
-    #
     assert period in ["week", "month", "quarter"]
     spy = get_spy_freq_rets(period)
     return spy.index
