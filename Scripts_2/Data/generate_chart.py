@@ -11,6 +11,8 @@ from Data import chart_library as cl
 from Data import dgp_config as dcf
 from Misc import utilities as ut
 
+import time
+
 
 class ChartGenerationError(Exception):
     pass
@@ -29,6 +31,7 @@ class GenerateStockData(object):
         need_adjust_price=True, # (bool) Whether to apply price adjustment to normalize OHLC values
         allow_tqdm=True,        # (bool) Whether to use tqdm progress bars for visual feedback
         chart_type="bar",       # (str) Type of chart image to generate: 'bar', 'pixel', or 'centered_pixel'
+        process_data=None
     ):
         self.country = country
         self.year = year
@@ -45,6 +48,7 @@ class GenerateStockData(object):
         self.allow_tqdm = allow_tqdm
         assert chart_type in ["bar", "pixel", "centered_pixel"]
         self.chart_type = chart_type
+        self.process_data = process_data
 
         self.ret_len_list = [5, 20, 60, 65, 180, 250, 260]
         self.bar_width = 3
@@ -270,7 +274,7 @@ class GenerateStockData(object):
             print("Found pregenerated file {}".format(self.file_name))
             return
         print(f"Generating {self.file_name}")
-        self.df = eqd.get_processed_US_data_by_year(self.year)
+        self.df = self.process_data
         self.stock_id_list = np.unique(self.df.index.get_level_values("StockID"))
         print(self.stock_id_list)
         dtype_dict, feature_list = self._get_feature_and_dtype_list()
@@ -291,7 +295,19 @@ class GenerateStockData(object):
             if (self.allow_tqdm and "tqdm" in sys.modules)
             else self.stock_id_list
         )
+
+        n = len(iterator)
+        start_time = time.time()
+
         for i, stock_id in enumerate(iterator):
+            iter_start = time.time()
+            elapsed = time.time() - start_time
+            avg_time = elapsed / (i + 1)
+            remaining = avg_time * (n - i - 1)
+
+            print(f"[{self.year}] [{i+1}/{n}] Estimated time remaining: {remaining:.2f} seconds")
+
+
             stock_df = self.df.xs(stock_id, level=1).copy()
             stock_df = stock_df.reset_index()
             dates = eqd.get_period_end_dates(self.freq)

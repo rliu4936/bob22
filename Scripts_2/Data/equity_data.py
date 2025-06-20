@@ -7,8 +7,8 @@ import time
 from Data import dgp_config as dcf
 
 
-def get_processed_US_data_by_year(year):
-    df = processed_US_data()
+def get_processed_US_data_by_year(year, df):
+    #df = processed_US_data()
 
     df = df[
         df.index.get_level_values("Date").year.isin([year, year - 1, year - 2])
