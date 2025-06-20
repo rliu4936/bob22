@@ -13,39 +13,31 @@ torch.set_num_threads(6)
 
 if __name__ == "__main__":
     # Generate Image Data
-    # year_list = list(range(1993, 1999)) #
-    # chart_type = "bar"
-    # ws = 5
-    # freq = "week"
-    # ma_lags = [ws]
-    # vb = True
-    # for year in year_list:
-    #     print(f"{ws}D {freq} {chart_type} {year}")
-    #     dgp_obj = GenerateStockData(
-    #         "USA",
-    #         year,
-    #         ws,
-    #         freq,
-    #         chart_freq=1,  # for time-scale I20/R20 to R5/R5, set ws=20 and chart_freq=4
-    #         ma_lags=ma_lags,
-    #         volume_bar=vb,
-    #         need_adjust_price=True,
-    #         allow_tqdm=True,
-    #         chart_type=chart_type,
-    #     )
-        # generate CNN2D Data
-        # dgp_obj.save_annual_data()
-    #   # generate CNN1D Data
-        # dgp_obj.save_annual_ts_data()
-
-
-    year_list = list(range(1993, 1999))
-    chart_type = "bar"
+    year_list = list(range(2019, 2020)) #
+    chart_type = "pixel"
     ws = 5
     freq = "week"
     ma_lags = [ws]
     vb = True
-    gys = GenerateYearStockData("USA", year_list, ws, freq)
+    for year in year_list:
+        print(f"{ws}D {freq} {chart_type} {year}")
+        dgp_obj = GenerateStockData(
+            "USA",
+            year,
+            ws,
+            freq,
+            chart_freq=1,  # for time-scale I20/R20 to R5/R5, set ws=20 and chart_freq=4
+            ma_lags=ma_lags,
+            volume_bar=vb,
+            need_adjust_price=True,
+            allow_tqdm=True,
+            chart_type=chart_type,
+        )
+        # generate CNN2D Data
+        dgp_obj.save_annual_data()
+      # generate CNN1D Data
+        dgp_obj.save_annual_ts_data()
+
 
     # Train CNN Models for US
     # CNN2D

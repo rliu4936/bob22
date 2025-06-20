@@ -36,9 +36,7 @@ class PortfolioManager(object):
         self.transaction_cost = transaction_cost
         if load_signal:
             assert "up_prob" in signal_df.columns
-            print("$$$$**** THIS IS signal_df ****", signal_df)
             self.signal_df = self.get_up_prob_with_period_ret(signal_df)
-            print("**** THIS IS self.signal_df ****", self.signal_df)
 
     def __add_period_ret_to_us_res_df_w_delays(self, signal_df):
         period_ret = eqd.get_period_ret(self.freq, country=self.country)
@@ -85,6 +83,7 @@ class PortfolioManager(object):
                 else f"next_{self.freq}_ret_{delay}delay"
             )
         df = self.signal_df.copy()
+        
         def __get_decile_df_with_inv_ret(reb_df, decile_idx):
             rebalance_up_prob = reb_df.up_prob
             low = np.percentile(rebalance_up_prob, decile_idx * 100.0 / cut)

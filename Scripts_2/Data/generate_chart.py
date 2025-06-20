@@ -29,7 +29,6 @@ class GenerateStockData(object):
         need_adjust_price=True, # (bool) Whether to apply price adjustment to normalize OHLC values
         allow_tqdm=True,        # (bool) Whether to use tqdm progress bars for visual feedback
         chart_type="bar",       # (str) Type of chart image to generate: 'bar', 'pixel', or 'centered_pixel'
-        us_ret=None,
     ):
         self.country = country
         self.year = year
@@ -46,7 +45,6 @@ class GenerateStockData(object):
         self.allow_tqdm = allow_tqdm
         assert chart_type in ["bar", "pixel", "centered_pixel"]
         self.chart_type = chart_type
-        self.us_ret = us_ret
 
         self.ret_len_list = [5, 20, 60, 65, 180, 250, 260]
         self.bar_width = 3
@@ -272,7 +270,7 @@ class GenerateStockData(object):
             print("Found pregenerated file {}".format(self.file_name))
             return
         print(f"Generating {self.file_name}")
-        self.df = eqd.get_processed_US_data_by_year(self.year, self.us_ret)
+        self.df = eqd.get_processed_US_data_by_year(self.year)
         self.stock_id_list = np.unique(self.df.index.get_level_values("StockID"))
         print(self.stock_id_list)
         dtype_dict, feature_list = self._get_feature_and_dtype_list()

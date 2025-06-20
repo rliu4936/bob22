@@ -7,7 +7,9 @@ import time
 from Data import dgp_config as dcf
 
 
-def get_processed_US_data_by_year(year, df):
+def get_processed_US_data_by_year(year):
+    df = processed_US_data()
+
     df = df[
         df.index.get_level_values("Date").year.isin([year, year - 1, year - 2])
     ].copy()
@@ -31,6 +33,7 @@ def get_period_end_dates(period):
     return spy.index
 
 
+# def getProcessedData(country = "USA")
 def processed_US_data():
     processed_us_data_path = op.join(dcf.PROCESSED_DATA_DIR, "us_ret.feather")
     
