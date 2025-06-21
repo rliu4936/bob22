@@ -93,6 +93,10 @@ class Experiment(object):
         self.device = torch.device(
             "cuda:{}".format(self.device_number) if torch.cuda.is_available() else "cpu"
         )
+        print("Using device:", self.device)
+        print(torch.cuda.get_device_name(self.device))
+        print(torch.cuda.memory_allocated(self.device) / 1024**3, "GB allocated")
+        
         self.max_epoch = max_epoch
         self.enable_tqdm = enable_tqdm
         self.early_stop = early_stop
@@ -1353,7 +1357,7 @@ def train_us_model(
     dp=0.50,
     ensem=5,
     total_worker=1,
-    dn=None,
+    dn=0,
     from_ensem_res=True,
     ensem_range=None,
     train_size_ratio=0.7, # Single training period (1993–2000): 70% train / 30% valid
@@ -1418,6 +1422,7 @@ def train_us_model(
                 load_saved_data=from_ensem_res,
                 is_ensem_res=is_ensem_res,
                 delay_list=pf_delay_list,
+                cut=20
             )
         del exp_obj
 

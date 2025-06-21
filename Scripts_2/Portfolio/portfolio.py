@@ -205,34 +205,86 @@ class PortfolioManager(object):
         log_rets = np.log(rets.astype(float) + 1)
         return log_rets.cumsum()
 
+    # def make_portfolio_plot(
+    #     self, portfolio_ret, cut, weight_type, save_path, plot_title
+    # ):
+    #     ret_name = "ewretx" if weight_type == "ew" else "vwretx"
+    #     df = portfolio_ret.copy()
+    #     df.columns = ["Low(L)"] + [str(i) for i in range(2, cut)] + ["High(H)", "H-L"]
+    #     spy = eqd.get_spy_freq_rets(self.freq)
+
+    #     df["SPY"] = spy[ret_name]
+    #     df.dropna(inplace=True)
+    #     top_col_name, bottom_col_name = ("High(H)", "Low(L)")
+    #     log_ret_df = pd.DataFrame(index=df.index)
+    #     for column in df.columns:
+    #         log_ret_df[column] = self._ret_to_cum_log_ret(df[column])
+    #     plt.figure()
+    #     log_ret_df = log_ret_df[[top_col_name, bottom_col_name, "H-L", "SPY"]]
+    #     prev_year = pd.to_datetime(log_ret_df.index[0]).year - 1
+    #     prev_day = pd.to_datetime("{}-12-31".format(prev_year))
+    #     # log_ret_df.loc[prev_day] = [0, 0, 0, 0]
+    #     plot = log_ret_df.plot(
+    #         style={"SPY": "y", top_col_name: "b", bottom_col_name: "r", "H-L": "k"},
+    #         lw=1,
+    #         title=plot_title,
+    #     )
+    #     plot.legend(loc=2)
+    #     plt.grid()
+    #     plt.savefig(save_path)
+    #     plt.close()
+    
     def make_portfolio_plot(
         self, portfolio_ret, cut, weight_type, save_path, plot_title
     ):
-        ret_name = "ewretx" if weight_type == "ew" else "vwretx"
-        df = portfolio_ret.copy()
-        df.columns = ["Low(L)"] + [str(i) for i in range(2, cut)] + ["High(H)", "H-L"]
-        spy = eqd.get_spy_freq_rets(self.freq)
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import pandas as pd
 
+        print(f"\n[DEBUG] Starting make_portfolio_plot")
+        print(f"[DEBUG] cut = {cut}, weight_type = {weight_type}")
+        print(f"[DEBUG] portfolio_ret shape = {portfolio_ret.shape}")
+
+        # Choose return type
+        ret_name = "ewretx" if weight_type == "ew" else "vwretx"
+        print(f"[DEBUG] Using return type column: {ret_name}")
+
+        # Copy and rename columns
+        df = portfolio_ret.copy()
+        expected_columns = ["Low(L)"] + [f"{i}" for i in range(2, cut)] + ["High(H)", "H-L"]
+        df.columns = expected_columns
+        print(f"[DEBUG] Renamed df columns: {df.columns.tolist()}")
+
+        # Add SPY benchmark returns
+        spy = eqd.get_spy_freq_rets(self.freq)
         df["SPY"] = spy[ret_name]
+        print(f"[DEBUG] Added SPY column. df shape: {df.shape}")
+
+        # Drop NA values
         df.dropna(inplace=True)
-        top_col_name, bottom_col_name = ("High(H)", "Low(L)")
+        print(f"[DEBUG] After dropna, df shape: {df.shape}")
+
+        # Convert returns to cumulative log returns
         log_ret_df = pd.DataFrame(index=df.index)
-        for column in df.columns:
-            log_ret_df[column] = self._ret_to_cum_log_ret(df[column])
-        plt.figure()
-        log_ret_df = log_ret_df[[top_col_name, bottom_col_name, "H-L", "SPY"]]
-        prev_year = pd.to_datetime(log_ret_df.index[0]).year - 1
-        prev_day = pd.to_datetime("{}-12-31".format(prev_year))
-        # log_ret_df.loc[prev_day] = [0, 0, 0, 0]
-        plot = log_ret_df.plot(
-            style={"SPY": "y", top_col_name: "b", bottom_col_name: "r", "H-L": "k"},
-            lw=1,
-            title=plot_title,
-        )
-        plot.legend(loc=2)
-        plt.grid()
+        for col in df.columns:
+            log_ret_df[col] = self._ret_to_cum_log_ret(df[col])
+        print(f"[DEBUG] Cumulative log return columns: {log_ret_df.columns.tolist()}")
+
+        # Plot all lines
+        plt.figure(figsize=(12, 6))
+        for col in log_ret_df.columns:
+            plt.plot(log_ret_df.index, log_ret_df[col], label=col, lw=1)
+        print(f"[DEBUG] Finished plotting all lines.")
+
+        # Finalize plot
+        plt.ylim(-2, 3)
+        plt.title(plot_title)
+        plt.legend(loc="best", fontsize=8)
+        plt.grid(True)
+        plt.tight_layout()
         plt.savefig(save_path)
         plt.close()
+        print(f"[DEBUG] Plot saved to {save_path}\n")
 
     def portfolio_res_summary(self, portfolio_ret, turnover, cut=10):
         avg = portfolio_ret.mean().to_numpy()
@@ -279,7 +331,7 @@ class PortfolioManager(object):
                 file.write(ut.to_latex_w_turnover(summary_df, cut=cut))
 
     def get_portfolio_name(self, weight_type, delay, cut):
-        assert weight_type.lower() in ["ew", "vw"]
+        # assert weight_type.lower() in ["ew", "vw"]
         delay_prefix = "" if delay == 0 else f"{delay}d_delay_"
         cut_surfix = "" if cut == 10 else f"_{cut}cut"
         custom_ret_surfix = "" if self.custom_ret is None else self.custom_ret
