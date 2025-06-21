@@ -9,7 +9,6 @@ ws = 20
 freq = "week"
 ma_lags = [ws]
 vb = True
-year_list = list(range(2012, 2020))
 
 def get_us_ret_by_year(year, semaphore):
     with semaphore:
@@ -34,13 +33,19 @@ def process_year(year, semaphore):
     dgp_obj.save_annual_ts_data()
     print(f"[{year}] Done.")
 
+def chunked(lst, size):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
+
 if __name__ == "__main__":
+    year_list = list(range(1994, 2020))  # Replace with any list of years
     with Manager() as manager:
-        semaphore = manager.Semaphore(1)  # Shared across processes
-        processes = []
-        for year in year_list:
-            p = Process(target=process_year, args=(year, semaphore))
-            p.start()
-            processes.append(p)
-        for p in processes:
-            p.join()
+        semaphore = manager.Semaphore(1)
+        for year_chunk in chunked(year_list, 6):
+            processes = []
+            for year in year_chunk:
+                p = Process(target=process_year, args=(year, semaphore))
+                p.start()
+                processes.append(p)
+            for p in processes:
+                p.join()

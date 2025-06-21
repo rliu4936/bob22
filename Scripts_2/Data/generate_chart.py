@@ -305,7 +305,8 @@ class GenerateStockData(object):
             avg_time = elapsed / (i + 1)
             remaining = avg_time * (n - i - 1)
 
-            print(f"[{self.year}] [{i+1}/{n}] Estimated time remaining: {remaining:.2f} seconds")
+            if (i + 1) % 500 == 0 or (i + 1) == n:
+                print(f"[{self.year}] [{i+1}/{n}] Estimated time remaining: {remaining:.2f} seconds")
 
 
             stock_df = self.df.xs(stock_id, level=1).copy()
@@ -528,7 +529,18 @@ class GenerateStockData(object):
             if (self.allow_tqdm and "tqdm" in sys.modules)
             else self.stock_id_list
         )
+
+        n = len(iterator)
+        start_time = time.time()
+
         for i, stock_id in enumerate(iterator):
+            iter_start = time.time()
+            elapsed = time.time() - start_time
+            avg_time = elapsed / (i + 1)
+            remaining = avg_time * (n - i - 1)
+
+            if (i + 1) % 500 == 0 or (i + 1) == n:
+                print(f"[{self.year}] [{i+1}/{n}] Estimated time remaining: {remaining:.2f} seconds")
 
             stock_df = self.df.xs(stock_id, level=1).copy()
             stock_df = stock_df.reset_index()
