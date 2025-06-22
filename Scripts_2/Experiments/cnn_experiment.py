@@ -93,10 +93,6 @@ class Experiment(object):
         self.device = torch.device(
             "cuda:{}".format(self.device_number) if torch.cuda.is_available() else "cpu"
         )
-        print("Using device:", self.device)
-        print(torch.cuda.get_device_name(self.device))
-        print(torch.cuda.memory_allocated(self.device) / 1024**3, "GB allocated")
-        
         self.max_epoch = max_epoch
         self.enable_tqdm = enable_tqdm
         self.early_stop = early_stop
@@ -862,7 +858,6 @@ class Experiment(object):
         pf_obj = self.load_portfolio_obj(delay_list)
         for delay in delay_list:
             pf_obj.generate_portfolio(delay=delay, cut=cut)
-            pf_obj.make_portfolio_plot()
 
     def load_portfolio_obj(
         self, delay_list=[0], load_signal=True, custom_ret=None, transaction_cost=False
@@ -873,8 +868,7 @@ class Experiment(object):
             whole_ensemble_res = None
 
         print("**** whole_ensemble_res's value is ****", whole_ensemble_res)
-        # makes sense up to here
-        
+
         pf_obj = pf.PortfolioManager(
             whole_ensemble_res,
             self.pf_freq,
@@ -1026,6 +1020,66 @@ class Experiment(object):
         df.to_csv(os.path.join(self.ensem_res_dir, f"oos_up_prob.csv"))
         return df.loc["Mean"]
 
+    def summarize_true_up_label(self):
+        tv_df = self._df_true_up_label(list(range(1993, 2001)), "In Sample")
+        test_df = self._df_true_up_label(list(range(2001, 2020)), "OOS")
+        df = pd.concat([tv_df, test_df])
+        df.to_csv(
+            os.path.join(
+                cf.LOG_DIR,
+                f"{self.ws}d{self.pw}p_vb{self.has_volume_bar}_ma{self.has_ma}_oos_up_prob.csv",
+            )
+        )
+        with open(
+            os.path.join(
+                cf.LOG_DIR,
+                f"{self.ws}d{self.pw}p_vb{self.has_volume_bar}_ma{self.has_ma}_oos_up_prob.txt",
+            ),
+            "w+",
+        ) as f:
+            f.write(df.to_latex())
+
+    def _df_true_up_label(self, year_list, datatype):
+        df = pd.DataFrame(
+            index=year_list,
+            columns=[
+                "Sample Number",
+                "True Up Pct",
+                "Accy",
+                "Pred Up Pct",
+                "Mean Up Prob",
+                "Accy (Pred Up)",
+                "Accy (Pred Down)",
+            ],
+        )
+        for y in year_list:
+            try:
+                ensem_res = self.load_ensem_res_w_period_ret(year=y)
+            except FileNotFoundError:
+                continue
+
+            print(
+                f"{np.sum(np.isnan(ensem_res.period_ret))}/{len(ensem_res)} of ret_val is Nan"
+            )
+            label = np.where(ensem_res.period_ret > 0, 1, 0)
+            pred = np.where(ensem_res.up_prob > 0.5, 1, 0)
+            df.loc[y, "Sample Number"] = len(ensem_res)
+            df.loc[y, "True Up Pct"] = np.sum(ensem_res.period_ret > 0.0) / len(
+                ensem_res
+            )
+            df.loc[y, "Accy"] = np.sum(label == pred) / len(label)
+            df.loc[y, "Pred Up Pct"] = np.sum(ensem_res.up_prob > 0.5) / len(ensem_res)
+            df.loc[y, "Mean Up Prob"] = ensem_res.up_prob.mean()
+            df.loc[y, "Accy (Pred Up)"] = np.sum(
+                label[pred == 1] == pred[pred == 1]
+            ) / len(pred[pred == 1])
+            df.loc[y, "Accy (Pred Down)"] = np.sum(
+                label[pred == 0] == pred[pred == 0]
+            ) / len(pred[pred == 0])
+        df.loc[f"{datatype} Mean"] = df.mean(axis=0)
+        df = df.astype(float).round(2)
+        df["Sample Number"] = df["Sample Number"].astype(int)
+        return df
 
 # get_exp_obj_by_spec:
 #
@@ -1357,7 +1411,7 @@ def train_us_model(
     dp=0.50,
     ensem=5,
     total_worker=1,
-    dn=0,
+    dn=None,
     from_ensem_res=True,
     ensem_range=None,
     train_size_ratio=0.7, # Single training period (1993–2000): 70% train / 30% valid
@@ -1375,6 +1429,7 @@ def train_us_model(
     regression_label=None,
     pf_delay_list=[0],
     lr=1e-5,
+    cut=10
 ):
     torch.set_num_threads(1)
     if total_worker > 1:
@@ -1384,6 +1439,7 @@ def train_us_model(
         worker_idx = 0
 
     setting_list = list(itertools.product(ws_list, pw_list))
+
 
     print(
         f"Worker {worker_idx} from {total_worker} workers for {len(setting_list)} jobs"
@@ -1422,7 +1478,7 @@ def train_us_model(
                 load_saved_data=from_ensem_res,
                 is_ensem_res=is_ensem_res,
                 delay_list=pf_delay_list,
-                cut=20
+                cut=cut
             )
         del exp_obj
 

@@ -1,7 +1,7 @@
 # import os
 import os.path as op
 import pdb
-
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -198,6 +198,11 @@ class PortfolioManager(object):
         print(
             f"Pearson Corr between Prob and Top/Bottom deciles Return is {np.nanmean(prob_inv_ret_pearson_corr):.4f}"
         )
+
+        plot_title = f"{self.freq.capitalize()} Portfolio ({weight_type.upper()} Weighting)"
+        save_path = op.join(self.portfolio_dir, f"portfolio_plot_{weight_type}.png")
+        self.make_portfolio_plot(portfolio_ret=portfolio_ret, cut=cut, weight_type=weight_type, plot_title=plot_title, save_path=save_path)
+
         return portfolio_ret, np.mean(turnover)
 
     @staticmethod
