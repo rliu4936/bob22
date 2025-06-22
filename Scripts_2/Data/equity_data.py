@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import time
 from Data import dgp_config as dcf
+from tqdm import tqdm
 
 
 def get_processed_US_data_by_year(year, df):
@@ -77,42 +78,82 @@ def processed_US_data():
 
 
 def process_raw_data_helper(df):
+    # ---------- basic cleaning / renaming ----------
     df = df.rename(
         columns={
-            "date": "Date",
-            "PERMNO": "StockID",
+            "date":  "Date",
+            "PERMNO":"StockID",
             "BIDLO": "Low",
             "ASKHI": "High",
-            "PRC": "Close",
-            "VOL": "Vol",
-            "SHROUT": "Shares",
-            "OPENPRC": "Open",
-            "RET": "Ret",
+            "PRC":   "Close",
+            "VOL":   "Vol",
+            "SHROUT":"Shares",
+            "OPENPRC":"Open",
+            "RET":   "Ret",
         }
     )
-    df.StockID = df.StockID.astype(str)
-    df.Ret = df.Ret.astype(str)
-    df = df.replace(
-        {
-            "Close": {0: np.nan},
-            "Open": {0: np.nan},
-            "High": {0: np.nan},
-            "Low": {0: np.nan},
-            "Ret": {"C": np.nan, "B": np.nan, "A": np.nan, ".": np.nan},
-            "Vol": {0: np.nan, (-99): np.nan},
-        }
-    )
+    df["StockID"] = df["StockID"].astype(str)
+    df["Ret"]     = df["Ret"].astype(str)
+
+    df = df.replace({
+        "Close": {0: np.nan}, "Open":  {0: np.nan},
+        "High":  {0: np.nan}, "Low":   {0: np.nan},
+        "Ret":   {"C": np.nan, "B": np.nan, "A": np.nan, ".": np.nan},
+        "Vol":   {0: np.nan, -99: np.nan},
+    })
+
     if "Shares" not in df.columns:
         df["Shares"] = 0
-    df["Ret"] = df.Ret.astype(np.float64)
+
+    df["Ret"] = df["Ret"].astype(np.float64)
     df = df.dropna(subset=["Ret"])
+
     df[["Close", "Open", "High", "Low", "Vol", "Shares"]] = df[
         ["Close", "Open", "High", "Low", "Vol", "Shares"]
     ].abs()
 
+    # sort & index -----------------------------------------------------
     df.set_index(["Date", "StockID"], inplace=True)
     df.sort_index(inplace=True)
-    #df = add_derived_features(df)
+
+    # ---------- BACKWARD adjustment per stock ------------------------
+    def apply_backward_adjust(stock_df):
+        # stock_df index: (Date, StockID); ascending by Date
+        stock_df = stock_df.reset_index()
+
+        if stock_df.empty or stock_df.loc[len(stock_df)-1, "Close"] in (0, np.nan):
+            return pd.DataFrame([], columns=stock_df.columns).set_index(["Date", "StockID"])
+
+        adjusted = stock_df.copy()
+        last_idx = len(adjusted) - 1
+
+        # Set last day's AdjClose equal to its raw close (anchor)
+        adjusted.at[last_idx, "AdjClose"] = adjusted.at[last_idx, "Close"]
+
+        # Walk *backwards* from second-last row to first
+        for i in range(last_idx - 1, -1, -1):
+            next_adj_close = adjusted.at[i + 1, "AdjClose"]
+            ret_next       = adjusted.at[i + 1, "Ret"]           # use next day's return
+            adj_close      = next_adj_close / (1 + ret_next)     # back-adjust step
+
+            raw_close = adjusted.at[i, "Close"]
+            ratio     = adj_close / raw_close if raw_close else np.nan
+
+            adjusted.at[i, "AdjClose"] = adj_close
+            adjusted.at[i, "Open"]  *= ratio
+            adjusted.at[i, "High"]  *= ratio
+            adjusted.at[i, "Low"]   *= ratio
+            adjusted.at[i, "Close"]  = adj_close                 # overwrite Close
+
+        adjusted.set_index(["Date", "StockID"], inplace=True)
+        return adjusted
+
+    print("Applying BACKWARD price adjustment...")
+    adjusted_parts = []
+    for sid, g in tqdm(df.groupby(level="StockID"), desc="Adjusting by StockID"):
+        adjusted_parts.append(apply_backward_adjust(g))
+
+    df = pd.concat(adjusted_parts).sort_index()
     return df
 
 

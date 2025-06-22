@@ -82,43 +82,34 @@ class GenerateStockData(object):
         self.images_filename = op.join(self.save_dir, f"{self.file_name}_images.dat")
 
     @staticmethod
+
     def adjust_price(df):
         if len(df) == 0:
-            raise ChartGenerationError("adjust_price: Empty Dataframe")
+            raise ValueError("adjust_price: Empty DataFrame")
         if len(df.Date.unique()) != len(df):
-            raise ChartGenerationError("adjust_price: Dates not unique")
+            raise ValueError("adjust_price: Dates not unique")
         df = df.reset_index(drop=True)
 
-        fd_close = abs(df.at[0, "Close"])
         if df.at[0, "Close"] == 0.0 or pd.isna(df.at[0, "Close"]):
-            raise ChartGenerationError("adjust_price: First day close is nan or zero")
+            raise ValueError("adjust_price: First day close is nan or zero")
 
-        pre_close = fd_close
-        res_df = df.copy()
+        pre_close = df.at[0, "Close"]
+        df = df.copy()
+        df.at[0, "Close"] = 1.0
+        df.at[0, "Open"] /= pre_close
+        df.at[0, "High"] /= pre_close
+        df.at[0, "Low"]  /= pre_close
 
-        res_df.at[0, "Close"] = 1.0
-        res_df.at[0, "Open"] = abs(res_df.at[0, "Open"]) / pre_close
-        res_df.at[0, "High"] = abs(res_df.at[0, "High"]) / pre_close
-        res_df.at[0, "Low"] = abs(res_df.at[0, "Low"]) / pre_close
+        for i in range(1, len(df)):
+            today_ret = np.float64(df.at[i, "Ret"])
+            today_close_raw = df.at[i, "Close"]
+            df.at[i, "Close"] = (1 + today_ret) * df.at[i - 1, "Close"]
+            ratio = df.at[i, "Close"] / today_close_raw if today_close_raw != 0 else np.nan
+            df.at[i, "Open"] *= ratio
+            df.at[i, "High"] *= ratio
+            df.at[i, "Low"]  *= ratio
 
-        pre_close = 1
-        for i in range(1, len(res_df)):
-            today_closep = abs(res_df.at[i, "Close"])
-            today_openp = abs(res_df.at[i, "Open"])
-            today_highp = abs(res_df.at[i, "High"])
-            today_lowp = abs(res_df.at[i, "Low"])
-            today_ret = np.float64(res_df.at[i, "Ret"])
-
-            res_df.at[i, "Close"] = (1 + today_ret) * pre_close
-            res_df.at[i, "Open"] = res_df.at[i, "Close"] / today_closep * today_openp
-            res_df.at[i, "High"] = res_df.at[i, "Close"] / today_closep * today_highp
-            res_df.at[i, "Low"] = res_df.at[i, "Close"] / today_closep * today_lowp
-            res_df.at[i, "Ret"] = today_ret
-
-            if not pd.isna(res_df.at[i, "Close"]):
-                pre_close = res_df.at[i, "Close"]
-
-        return res_df
+        return df
 
     def load_adjusted_daily_prices(self, stock_df, date):
         if date not in set(stock_df.Date):
