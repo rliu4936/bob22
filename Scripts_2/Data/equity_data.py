@@ -7,6 +7,91 @@ import time
 from Data import dgp_config as dcf
 from tqdm import tqdm
 
+def build_all_period_ret_caches(country="CN"):
+
+    if country=="USA":
+        df = processed_US_data()                               # MultiIndex
+    if country=="CN":
+        df = processed_CN_data()
+    if "log_ret" not in df.columns:
+        df["log_ret"] = np.log1p(df["Ret"])
+
+    if "cum_log_ret" not in df.columns:
+        df["cum_log_ret"] = (
+            df.groupby("StockID")["log_ret"].cumsum(skipna=True)
+        )
+
+    # Daily-horizon forward returns
+    for d in (5, 20, 60):
+        col = f"Ret_{d}d"
+        if col not in df.columns:
+            df[col] = (
+                df.groupby("StockID", group_keys=False)["cum_log_ret"]
+                  .apply(lambda x: np.exp(x.shift(-d) - x) - 1)
+            )
+
+    # Rolling windows 6-20 d and 6-60 d
+    for start, end in ((6, 20), (6, 60)):
+        col = f"Ret_{start}-{end}d"
+        if col not in df.columns:
+            df[col] = (
+                df.groupby("StockID", group_keys=False)["cum_log_ret"]
+                  .apply(lambda x: np.exp(x.shift(-start) - x.shift(-end)) - 1)
+            )
+
+    # ------------------------------------------------------------------
+    # STEP 2 ─ handle week / month / quarter one by one
+    # ------------------------------------------------------------------
+    for freq in ("week", "month", "quarter"):
+
+        freq_col       = f"{freq}_ret"
+        next_col       = f"next_{freq}_ret"
+        next_col_delay = f"{next_col}_0delay"
+
+        # 2-a) Pick out the period-end rows (Fridays for weeks, etc.)
+        period_ends = get_period_end_dates(freq, country=country)
+        is_period_end = df.index.get_level_values("Date").isin(period_ends)
+        period_df = df.loc[is_period_end].copy()
+
+        # 2-b) Period return for *this* period (if not already present)
+        if freq_col not in df.columns:
+            period_df[freq_col] = (
+                period_df.groupby("StockID", group_keys=False)["cum_log_ret"]
+                         .apply(lambda x: np.exp(x.shift(-1) - x) - 1)
+            )
+            df.loc[period_df.index, freq_col] = period_df[freq_col]
+
+        # 2-c) ***NEW*** – compute next-period return **inside the
+        #        period-end slice only**, then write it back
+        period_df[next_col] = (
+            period_df.groupby("StockID")[freq_col].shift(-1)
+        )
+        df.loc[period_df.index, next_col] = period_df[next_col]
+        df[next_col_delay] = df[next_col]          # simple duplicate
+
+        # ------------------------------------------------------------------
+        # STEP 3 ─ build the export frame
+        # ------------------------------------------------------------------
+        base_cols = [
+            "MarketCap", "log_ret",
+            "Ret_5d", "Ret_20d", "Ret_60d", "Ret_6-20d", "Ret_6-60d",
+            freq_col, next_col, next_col_delay,
+        ]
+
+        mask   = df[freq_col].notna()              # keep only period-end rows
+        out_df = (
+            df.loc[mask, base_cols]                 # (1) filter while idx intact
+              .reset_index()                        # (2) Date & StockID to cols
+              .sort_values(["StockID", "Date"])     # (3) tidy order
+              .copy()
+        )
+
+        # ------------------------------------------------------------------
+        # STEP 4 ─ write parquet
+        # ------------------------------------------------------------------
+        out_path = op.join(dcf.CACHE_DIR, f"{country}_{freq}_ret_5.pq")
+        out_df.to_parquet(out_path, index=False)
+        print(f"✅ Saved {out_path}  — shape={out_df.shape}")
 
 def get_processed_US_data_by_year(year, df):
     #df = processed_US_data()
@@ -15,6 +100,29 @@ def get_processed_US_data_by_year(year, df):
         df.index.get_level_values("Date").year.isin([year, year - 1, year - 2])
     ].copy()
     return df
+
+
+def get_benchmark_returns(freq, country):
+    assert country in ["US", "CN"]
+    assert freq in ["week", "month", "quarter"]
+
+    if country == "US":
+        df = pd.read_csv(
+            os.path.join(dcf.CACHE_DIR, f"spy_{freq}_ret.csv"),
+            parse_dates=["date"],
+        )
+        df.rename(columns={"date": "Date"}, inplace=True)
+        df = df.set_index("Date")
+
+        return df["ewretx"]
+    if country == "CN":
+        df = pd.read_csv(
+            os.path.join(dcf.CACHE_DIR, f"SSE_{freq}.csv"),
+            parse_dates=["date"],
+        )
+        df.rename(columns={"date": "Date"}, inplace=True)
+        df = df.set_index("Date")
+        return df["Ret"]
 
 
 def get_spy_freq_rets(freq):
@@ -28,11 +136,38 @@ def get_spy_freq_rets(freq):
     return spy
 
 
-def get_period_end_dates(period):
+def get_period_end_dates(period, country="USA"):
     assert period in ["week", "month", "quarter"]
-    spy = get_spy_freq_rets(period)
-    return spy.index
 
+    if country == "USA":
+        spy = get_spy_freq_rets(period)
+        return spy.index
+
+    if country == "CN":
+        cache_path = op.join(dcf.CACHE_DIR, f"cn_period_end_dates_{period}.csv")
+
+        if not op.exists(cache_path):
+            raise FileNotFoundError(
+                f"{cache_path} not found. Run processed_CN_data() once to build it."
+            )
+
+        dates = pd.read_csv(cache_path, parse_dates=["Date"])
+        return pd.DatetimeIndex(dates["Date"])
+
+    raise ValueError(f"Unsupported country code: {country}")
+
+# def getProcessedData(country):
+#     data_path = op.join(dcf.PROCESSED_DATA_DIR, "{country}_processed.feather")
+#     if op.exists(processed_us_data_path):
+#         print(f"Loading processed data from {processed_us_data_path}")
+#         since = time.time()
+#         df = pd.read_feather(processed_us_data_path)
+
+#         df.set_index(["Date", "StockID"], inplace=True)
+#         df.sort_index(inplace=True)
+#         print(f"Finish loading processed data in {(time.time() - since) / 60:.2f} min")
+
+#         return df.copy()
 
 # def getProcessedData(country = "USA")
 def processed_US_data():
@@ -148,16 +283,18 @@ def process_raw_data_helper(df):
         adjusted.set_index(["Date", "StockID"], inplace=True)
         return adjusted
 
-    print("Applying BACKWARD price adjustment...")
-    adjusted_parts = []
-    for sid, g in tqdm(df.groupby(level="StockID"), desc="Adjusting by StockID"):
-        adjusted_parts.append(apply_backward_adjust(g))
+    # print("Applying BACKWARD price adjustment...")
+    # adjusted_parts = []
+    # for sid, g in tqdm(df.groupby(level="StockID"), desc="Adjusting by StockID"):
+    #     adjusted_parts.append(apply_backward_adjust(g))
 
-    df = pd.concat(adjusted_parts).sort_index()
+    # df = pd.concat(adjusted_parts).sort_index()
+
+    df = add_derived_features(df, country="USA")
     return df
 
 
-def add_derived_features(df):
+def add_derived_features(df, country="USA"):
     df["MarketCap"] = np.abs(df["Close"] * df["Shares"])
     
     df["log_ret"] = np.log(1 + df.Ret)
@@ -168,7 +305,7 @@ def add_derived_features(df):
     
     #
     for freq in ["week", "month", "quarter"]:
-        period_end_dates = get_period_end_dates(freq)
+        period_end_dates = get_period_end_dates(freq, country=country)
         freq_df = df[df.index.get_level_values("Date").isin(period_end_dates)].copy()
         freq_df["freq_ret"] = freq_df.groupby("StockID", group_keys=False)["cum_log_ret"].apply(
             lambda x: np.exp(x.shift(-1) - x) - 1
@@ -189,45 +326,36 @@ def add_derived_features(df):
     return df
 
 
-def get_period_ret(period, country="USA"):
-#
-    assert country == "USA"
+def get_period_ret(period, country="US"):
+    assert country in ["US", "CN"]
     assert period in ["week", "month", "quarter"]
-    period_ret_path = op.join(dcf.CACHE_DIR, f"us_{period}_ret.pq")
-    period_ret = pd.read_parquet(period_ret_path)   # 
+    period_ret_path = op.join(dcf.CACHE_DIR, f"{country}_{period}_ret.pq")
+    period_ret = pd.read_parquet(period_ret_path)
     period_ret.set_index(["Date", "StockID"], inplace=True)
     period_ret.sort_index(inplace=True)
     return period_ret
 
 
-
-
 # def getProcessedData(country = "CHN")
 def processed_CN_data():
     """
-    Load pre-processed China A-share daily data from a Feather file if it exists;
-    otherwise read the raw CSV (Wind/CSMAR-style), clean it with
-    process_cn_raw_data_helper(), cache it to Feather, and return a copy.
-
-    Returns
-    -------
-    pd.DataFrame
-        Multi-indexed by (Date, StockID) and ready for downstream use.
+    Load pre-processed China A-share data, or build it from raw.
+    Also builds per-period end-date caches for week / month / quarter.
     """
     processed_cn_data_path = op.join(dcf.PROCESSED_DATA_DIR, "cn_ret.feather")
 
-    # ---------- 1. Fast path: already processed ----------
+    # ---- fast path ---------------------------------------------------
     if op.exists(processed_cn_data_path):
         print(f"Loading processed data from {processed_cn_data_path}")
         since = time.time()
         df = pd.read_feather(processed_cn_data_path)
         df.set_index(["Date", "StockID"], inplace=True)
         df.sort_index(inplace=True)
-        print(f"Finish loading processed data in {(time.time() - since) / 60:.2f} min")
+        print(f"Finish loading in {(time.time() - since) / 60:.2f} min")
         return df.copy()
 
-    # ---------- 2. Slow path: read raw file and preprocess ----------
-    raw_cn_data_path = op.join(dcf.RAW_DATA_DIR, "CSMAR/cn_93-25.csv")  # adjust name
+    # ---- slow path: read & preprocess raw ----------------------------
+    raw_cn_data_path = op.join(dcf.RAW_DATA_DIR, "CSMAR/cn_93-25.csv")
     print(f"Reading raw data from {raw_cn_data_path}")
 
     since = time.time()
@@ -235,26 +363,41 @@ def processed_CN_data():
         raw_cn_data_path,
         parse_dates=["Trddt"],
         dtype={
-            "Stkcd":       str,
-            "Opnprc":      np.float64,
-            "Hiprc":       np.float64,
-            "Loprc":       np.float64,
-            "Clsprc":      np.float64,
-            "Dnshrtrd":    np.float64,
-            "Dnvaltrd":    np.float64,
-            "Dretwd":      object,
-            "Dsmvosd":     np.float64,
-            "Markettype":  np.float64,
-            "Adjprcwd":    np.float64,      # ← NEW
+            "Stkcd":      str,
+            "Opnprc":     np.float64,
+            "Hiprc":      np.float64,
+            "Loprc":      np.float64,
+            "Clsprc":     np.float64,
+            "Dnshrtrd":   np.float64,
+            "Dnvaltrd":   np.float64,
+            "Dretwd":     object,
+            "Dsmvosd":    np.float64,
+            "Markettype": np.float64,
+            "Adjprcwd":   np.float64,
         },
         header=0,
     )
-    print(f"Finish reading data in {(time.time() - since):.2f} s")
+    print(f"Finish reading in {(time.time() - since):.2f} s")
 
-    # ---------- 3. Clean & feature-engineer ----------
+    # ➊ ---------- build CN period-end caches --------------------------
+    df["Date"] = pd.to_datetime(df["Trddt"])       # already parsed but explicit
+    for freq, pandas_code in [("week", "W"), ("month", "M"), ("quarter", "Q")]:
+        period_ends = (
+            df.groupby(df["Date"].dt.to_period(pandas_code))["Date"]
+              .max()
+              .sort_values()
+              .unique()
+        )
+        cache_path = op.join(dcf.CACHE_DIR, f"cn_period_end_dates_{freq}.csv")
+        pd.DataFrame({"Date": period_ends}).to_csv(cache_path, index=False)
+        print(f"Saved {freq} period-end cache → {cache_path}")
+    df = df.drop(columns="Date") 
+    # -----------------------------------------------------------------
+
+    # ---- clean & feature-engineer -----------------------------------
     df = process_cn_raw_data_helper(df)
 
-    # ---------- 4. Cache to Feather ----------
+    # ---- cache the fully processed feather --------------------------
     df.reset_index().to_feather(processed_cn_data_path)
     return df.copy()
 
@@ -316,4 +459,5 @@ def process_cn_raw_data_helper(df):
     df.set_index(["Date", "StockID"], inplace=True)
     df.sort_index(inplace=True)
 
+    df = add_derived_features(df, country="CN")
     return df

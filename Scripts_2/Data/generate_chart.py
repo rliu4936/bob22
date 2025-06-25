@@ -161,22 +161,22 @@ class GenerateStockData(object):
         df = df.reset_index(drop=True)
         return df
 
-    def convert_daily_df_to_chart_freq_df(self, daily_df):
-        if not len(daily_df) % self.chart_freq == 0:
-            raise ChartGenerationError("df not divided by chart freq")
-        ohlc_len = int(len(daily_df) / self.chart_freq)
-        df = pd.DataFrame(index=range(ohlc_len), columns=daily_df.columns)
-        for i in range(ohlc_len):
-            subdata = daily_df.iloc[
-                int(i * self.chart_freq) : int((i + 1) * self.chart_freq)
-            ]
-            df.loc[i] = subdata.iloc[-1]
-            df.loc[i, "Open"] = subdata.iloc[0]["Open"]
-            df.loc[i, "High"] = subdata["High"].max()
-            df.loc[i, "Low"] = subdata["Low"].min()
-            df.loc[i, "Vol"] = subdata["Vol"].sum()
-            df.loc[i, "Ret"] = np.prod(1 + np.array(subdata["Ret"])) - 1
-        return df
+    # def convert_daily_df_to_chart_freq_df(self, daily_df):
+    #     if not len(daily_df) % self.chart_freq == 0:
+    #         raise ChartGenerationError("df not divided by chart freq")
+    #     ohlc_len = int(len(daily_df) / self.chart_freq)
+    #     df = pd.DataFrame(index=range(ohlc_len), columns=daily_df.columns)
+    #     for i in range(ohlc_len):
+    #         subdata = daily_df.iloc[
+    #             int(i * self.chart_freq) : int((i + 1) * self.chart_freq)
+    #         ]
+    #         df.loc[i] = subdata.iloc[-1]
+    #         df.loc[i, "Open"] = subdata.iloc[0]["Open"]
+    #         df.loc[i, "High"] = subdata["High"].max()
+    #         df.loc[i, "Low"] = subdata["Low"].min()
+    #         df.loc[i, "Vol"] = subdata["Vol"].sum()
+    #         df.loc[i, "Ret"] = np.prod(1 + np.array(subdata["Ret"])) - 1
+    #     return df
 
     def _generate_daily_features(self, stock_df, date):
         res = self.load_adjusted_daily_prices(stock_df, date)
@@ -302,7 +302,7 @@ class GenerateStockData(object):
 
             stock_df = self.df.xs(stock_id, level=1).copy()
             stock_df = stock_df.reset_index()
-            dates = eqd.get_period_end_dates(self.freq)
+            dates = eqd.get_period_end_dates(self.freq, country=self.country)
             dates = dates[dates.year == self.year]
             for j, date in enumerate(dates):
                 try:

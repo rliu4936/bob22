@@ -54,7 +54,7 @@ class EquityDataset(Dataset):
         self.demean = self._get_insample_mean_std()
 
         assert delayed_ret in [0, 1, 2, 3, 4, 5]
-        if self.country == "USA":
+        if self.country == "USA" or self.country == "CN":
             self.ret_val_name = f"Ret_{dcf.FREQ_DICT[self.pw]}" + (
                 "" if delayed_ret == 0 else f"_{delayed_ret}delay"
             )

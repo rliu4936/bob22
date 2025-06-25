@@ -49,8 +49,12 @@ START_YEAR_DICT = {
     "Ireland": 1999,
     "Sweden": 1999,
 }
-IS_YEARS = list(range(1993, 2001))
-OOS_YEARS = list(range(2001, 2020))
+# IS_YEARS = list(range(1993, 2001))
+# OOS_YEARS = list(range(2001, 2026))
+
+SPLIT_YEARS = 2024
+IS_YEARS = list(range(1993, SPLIT_YEARS))
+OOS_YEARS = list(range(SPLIT_YEARS, 2026))
 
 BENCHMARK_MODEL_NAME_DICT = {
     5: "D5L2F53S1F53S1C64MP11",

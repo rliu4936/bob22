@@ -209,6 +209,16 @@ class PortfolioManager(object):
     def _ret_to_cum_log_ret(rets):
         log_rets = np.log(rets.astype(float) + 1)
         return log_rets.cumsum()
+    
+    @staticmethod
+    def _ret_to_cum_ret(rets):
+        """
+        Convert a series of period returns to cumulative returns (not in log space).
+        rets: pandas Series or numpy array of returns (e.g., 0.05 for 5%)
+        Returns: cumulative return series
+        """
+        cum_rets = (1 + rets.astype(float)).cumprod() - 1
+        return cum_rets 
 
     # def make_portfolio_plot(
     #     self, portfolio_ret, cut, weight_type, save_path, plot_title
@@ -250,7 +260,7 @@ class PortfolioManager(object):
         print(f"[DEBUG] cut = {cut}, weight_type = {weight_type}")
         print(f"[DEBUG] portfolio_ret shape = {portfolio_ret.shape}")
 
-        # Choose return type
+        # Choose return typ
         ret_name = "ewretx" if weight_type == "ew" else "vwretx"
         print(f"[DEBUG] Using return type column: {ret_name}")
 
@@ -260,8 +270,9 @@ class PortfolioManager(object):
         df.columns = expected_columns
         print(f"[DEBUG] Renamed df columns: {df.columns.tolist()}")
 
+
         # Add SPY benchmark returns
-        spy = eqd.get_spy_freq_rets(self.freq)
+        spy = eqd.get_benchmark_returns(self.freq, "CN")
         df["SPY"] = spy[ret_name]
         print(f"[DEBUG] Added SPY column. df shape: {df.shape}")
 
